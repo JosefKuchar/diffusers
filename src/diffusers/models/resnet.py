@@ -111,21 +111,29 @@ class ResnetBlockCondNorm2D(nn.Module):
         elif self.time_embedding_norm == "spatial":
             self.norm1 = SpatialNorm(in_channels, temb_channels)
         else:
-            raise ValueError(f" unsupported time_embedding_norm: {self.time_embedding_norm}")
+            raise ValueError(
+                f" unsupported time_embedding_norm: {self.time_embedding_norm}"
+            )
 
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = conv_cls(
+            in_channels, out_channels, kernel_size=3, stride=1, padding=1
+        )
 
         if self.time_embedding_norm == "ada_group":  # ada_group
             self.norm2 = AdaGroupNorm(temb_channels, out_channels, groups_out, eps=eps)
         elif self.time_embedding_norm == "spatial":  # spatial
             self.norm2 = SpatialNorm(out_channels, temb_channels)
         else:
-            raise ValueError(f" unsupported time_embedding_norm: {self.time_embedding_norm}")
+            raise ValueError(
+                f" unsupported time_embedding_norm: {self.time_embedding_norm}"
+            )
 
         self.dropout = torch.nn.Dropout(dropout)
 
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = conv_cls(
+            out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1
+        )
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -133,9 +141,15 @@ class ResnetBlockCondNorm2D(nn.Module):
         if self.up:
             self.upsample = Upsample2D(in_channels, use_conv=False)
         elif self.down:
-            self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
+            self.downsample = Downsample2D(
+                in_channels, use_conv=False, padding=1, name="op"
+            )
 
-        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
+        self.use_in_shortcut = (
+            self.in_channels != conv_2d_out_channels
+            if use_in_shortcut is None
+            else use_in_shortcut
+        )
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
@@ -148,7 +162,9 @@ class ResnetBlockCondNorm2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(
+        self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs
+    ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -269,9 +285,13 @@ class ResnetBlock2D(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
+        self.norm1 = torch.nn.GroupNorm(
+            num_groups=groups, num_channels=in_channels, eps=eps, affine=True
+        )
 
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = conv_cls(
+            in_channels, out_channels, kernel_size=3, stride=1, padding=1
+        )
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
@@ -279,15 +299,21 @@ class ResnetBlock2D(nn.Module):
             elif self.time_embedding_norm == "scale_shift":
                 self.time_emb_proj = linear_cls(temb_channels, 2 * out_channels)
             else:
-                raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
+                raise ValueError(
+                    f"unknown time_embedding_norm : {self.time_embedding_norm} "
+                )
         else:
             self.time_emb_proj = None
 
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
+        self.norm2 = torch.nn.GroupNorm(
+            num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True
+        )
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = conv_cls(
+            out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1
+        )
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -307,9 +333,15 @@ class ResnetBlock2D(nn.Module):
             elif kernel == "sde_vp":
                 self.downsample = partial(F.avg_pool2d, kernel_size=2, stride=2)
             else:
-                self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
+                self.downsample = Downsample2D(
+                    in_channels, use_conv=False, padding=1, name="op"
+                )
 
-        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
+        self.use_in_shortcut = (
+            self.in_channels != conv_2d_out_channels
+            if use_in_shortcut is None
+            else use_in_shortcut
+        )
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
@@ -322,7 +354,28 @@ class ResnetBlock2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(
+        self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs
+    ) -> torch.FloatTensor:
+        """
+        Chunked forwarding
+        """
+
+        num_chunks = input_tensor.shape[0]
+        ff_output = torch.cat(
+            [
+                self._forward(input_chunk, temb_chunk, *args, **kwargs)
+                for input_chunk, temb_chunk in zip(
+                    input_tensor.chunk(num_chunks, dim=0), temb.chunk(num_chunks, dim=0) if temb is not None else [None] * num_chunks
+                )
+            ],
+            dim=0,
+        )
+        return ff_output
+
+    def _forward(
+        self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs
+    ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -412,7 +465,9 @@ class Conv1dBlock(nn.Module):
     ):
         super().__init__()
 
-        self.conv1d = nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2)
+        self.conv1d = nn.Conv1d(
+            inp_channels, out_channels, kernel_size, padding=kernel_size // 2
+        )
         self.group_norm = nn.GroupNorm(n_groups, out_channels)
         self.mish = get_activation(activation)
 
@@ -454,7 +509,9 @@ class ResidualTemporalBlock1D(nn.Module):
         self.time_emb = nn.Linear(embed_dim, out_channels)
 
         self.residual_conv = (
-            nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
+            nn.Conv1d(inp_channels, out_channels, 1)
+            if inp_channels != out_channels
+            else nn.Identity()
         )
 
     def forward(self, inputs: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
@@ -527,7 +584,9 @@ class TemporalConvLayer(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, num_frames: int = 1) -> torch.Tensor:
         hidden_states = (
-            hidden_states[None, :].reshape((-1, num_frames) + hidden_states.shape[1:]).permute(0, 2, 1, 3, 4)
+            hidden_states[None, :]
+            .reshape((-1, num_frames) + hidden_states.shape[1:])
+            .permute(0, 2, 1, 3, 4)
         )
 
         identity = hidden_states
@@ -539,7 +598,8 @@ class TemporalConvLayer(nn.Module):
         hidden_states = identity + hidden_states
 
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(
-            (hidden_states.shape[0] * hidden_states.shape[2], -1) + hidden_states.shape[3:]
+            (hidden_states.shape[0] * hidden_states.shape[2], -1)
+            + hidden_states.shape[3:]
         )
         return hidden_states
 
@@ -571,7 +631,9 @@ class TemporalResnetBlock(nn.Module):
         kernel_size = (3, 1, 1)
         padding = [k // 2 for k in kernel_size]
 
-        self.norm1 = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=eps, affine=True)
+        self.norm1 = torch.nn.GroupNorm(
+            num_groups=32, num_channels=in_channels, eps=eps, affine=True
+        )
         self.conv1 = nn.Conv3d(
             in_channels,
             out_channels,
@@ -585,7 +647,9 @@ class TemporalResnetBlock(nn.Module):
         else:
             self.time_emb_proj = None
 
-        self.norm2 = torch.nn.GroupNorm(num_groups=32, num_channels=out_channels, eps=eps, affine=True)
+        self.norm2 = torch.nn.GroupNorm(
+            num_groups=32, num_channels=out_channels, eps=eps, affine=True
+        )
 
         self.dropout = torch.nn.Dropout(0.0)
         self.conv2 = nn.Conv3d(
@@ -610,7 +674,9 @@ class TemporalResnetBlock(nn.Module):
                 padding=0,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(
+        self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor
+    ) -> torch.FloatTensor:
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
@@ -701,10 +767,14 @@ class SpatioTemporalResBlock(nn.Module):
         batch_size = batch_frames // num_frames
 
         hidden_states_mix = (
-            hidden_states[None, :].reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
+            hidden_states[None, :]
+            .reshape(batch_size, num_frames, channels, height, width)
+            .permute(0, 2, 1, 3, 4)
         )
         hidden_states = (
-            hidden_states[None, :].reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
+            hidden_states[None, :]
+            .reshape(batch_size, num_frames, channels, height, width)
+            .permute(0, 2, 1, 3, 4)
         )
 
         if temb is not None:
@@ -717,7 +787,9 @@ class SpatioTemporalResBlock(nn.Module):
             image_only_indicator=image_only_indicator,
         )
 
-        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(batch_frames, channels, height, width)
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(
+            batch_frames, channels, height, width
+        )
         return hidden_states
 
 
@@ -743,15 +815,22 @@ class AlphaBlender(nn.Module):
     ):
         super().__init__()
         self.merge_strategy = merge_strategy
-        self.switch_spatial_to_temporal_mix = switch_spatial_to_temporal_mix  # For TemporalVAE
+        self.switch_spatial_to_temporal_mix = (
+            switch_spatial_to_temporal_mix  # For TemporalVAE
+        )
 
         if merge_strategy not in self.strategies:
             raise ValueError(f"merge_strategy needs to be in {self.strategies}")
 
         if self.merge_strategy == "fixed":
             self.register_buffer("mix_factor", torch.Tensor([alpha]))
-        elif self.merge_strategy == "learned" or self.merge_strategy == "learned_with_images":
-            self.register_parameter("mix_factor", torch.nn.Parameter(torch.Tensor([alpha])))
+        elif (
+            self.merge_strategy == "learned"
+            or self.merge_strategy == "learned_with_images"
+        ):
+            self.register_parameter(
+                "mix_factor", torch.nn.Parameter(torch.Tensor([alpha]))
+            )
         else:
             raise ValueError(f"Unknown merge strategy {self.merge_strategy}")
 
@@ -764,7 +843,9 @@ class AlphaBlender(nn.Module):
 
         elif self.merge_strategy == "learned_with_images":
             if image_only_indicator is None:
-                raise ValueError("Please provide image_only_indicator to use learned_with_images merge strategy")
+                raise ValueError(
+                    "Please provide image_only_indicator to use learned_with_images merge strategy"
+                )
 
             alpha = torch.where(
                 image_only_indicator.bool(),
@@ -779,7 +860,9 @@ class AlphaBlender(nn.Module):
             elif ndims == 3:
                 alpha = alpha.reshape(-1)[:, None, None]
             else:
-                raise ValueError(f"Unexpected ndims {ndims}. Dimensions should be 3 or 5")
+                raise ValueError(
+                    f"Unexpected ndims {ndims}. Dimensions should be 3 or 5"
+                )
 
         else:
             raise NotImplementedError

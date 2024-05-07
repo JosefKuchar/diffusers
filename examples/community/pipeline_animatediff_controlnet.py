@@ -90,29 +90,6 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor, output_type="np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
-
-        outputs.append(batch_output)
-
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
-
-    return outputs
-
-
 class AnimateDiffControlNetPipeline(
     DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin
 ):
@@ -243,12 +220,7 @@ class AnimateDiffControlNetPipeline(
             else:
                 scale_lora_layers(self.text_encoder, lora_scale)
 
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
+        batch_size = 1
 
         if prompt_embeds is None:
             # textual inversion: process multi-vector tokens if necessary
@@ -373,18 +345,29 @@ class AnimateDiffControlNetPipeline(
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt):
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        image_embeds = self.image_encoder(image).image_embeds
-        image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
 
-        uncond_image_embeds = torch.zeros_like(image_embeds)
-        return image_embeds, uncond_image_embeds
+            return image_embeds, uncond_image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
@@ -728,6 +711,27 @@ class AnimateDiffControlNetPipeline(
     def num_timesteps(self):
         return self._num_timesteps
 
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
+    def tensor2vid(self, video: torch.Tensor, output_type="np"):
+        batch_size, channels, num_frames, height, width = video.shape
+        outputs = []
+        for batch_idx in range(batch_size):
+            batch_vid = video[batch_idx].permute(1, 0, 2, 3)
+            batch_output = self.image_processor.postprocess(batch_vid, output_type)
+
+            outputs.append(batch_output)
+
+        if output_type == "np":
+            outputs = np.stack(outputs)
+
+        elif output_type == "pt":
+            outputs = torch.stack(outputs)
+
+        elif not output_type == "pil":
+            raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
+
+        return outputs
+
     @torch.no_grad()
     def __call__(
         self,
@@ -736,6 +740,8 @@ class AnimateDiffControlNetPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
+        steps_offset=0,
+        do_inference_steps=1,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_videos_per_prompt: Optional[int] = 1,
@@ -757,6 +763,7 @@ class AnimateDiffControlNetPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        camera_motions=None,
         **kwargs,
     ):
         r"""
@@ -908,12 +915,7 @@ class AnimateDiffControlNetPipeline(
         self._cross_attention_kwargs = cross_attention_kwargs
 
         # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
+        batch_size = 1
 
         device = self._execution_device
 
@@ -1024,86 +1026,87 @@ class AnimateDiffControlNetPipeline(
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        for i, t in enumerate(
+            timesteps[steps_offset : steps_offset + do_inference_steps]
+        ):
+            # expand the latents if we are doing classifier free guidance
+            latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                if guess_mode and self.do_classifier_free_guidance:
-                    # Infer ControlNet only for the conditional batch.
-                    control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
-                else:
-                    control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
-                controlnet_prompt_embeds = controlnet_prompt_embeds.repeat_interleave(num_frames, dim=0)
+            if guess_mode and self.do_classifier_free_guidance:
+                # Infer ControlNet only for the conditional batch.
+                control_model_input = latents
+                control_model_input = self.scheduler.scale_model_input(control_model_input, t)
+                controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+            else:
+                control_model_input = latent_model_input
+                controlnet_prompt_embeds = prompt_embeds
 
-                if isinstance(controlnet_keep[i], list):
-                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
-                else:
-                    controlnet_cond_scale = controlnet_conditioning_scale
-                    if isinstance(controlnet_cond_scale, list):
-                        controlnet_cond_scale = controlnet_cond_scale[0]
-                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
+            if isinstance(controlnet_keep[i], list):
+                cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+            else:
+                controlnet_cond_scale = controlnet_conditioning_scale
+                if isinstance(controlnet_cond_scale, list):
+                    controlnet_cond_scale = controlnet_cond_scale[0]
+                cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
-                control_model_input = torch.transpose(control_model_input, 1, 2)
-                control_model_input = control_model_input.reshape(
-                    (-1, control_model_input.shape[2], control_model_input.shape[3], control_model_input.shape[4])
-                )
+            control_model_input = torch.transpose(control_model_input, 1, 2)
+            control_model_input = control_model_input.reshape(
+                (-1, control_model_input.shape[2], control_model_input.shape[3], control_model_input.shape[4])
+            )
 
-                down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    control_model_input,
-                    t,
-                    encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=conditioning_frames,
-                    conditioning_scale=cond_scale,
-                    guess_mode=guess_mode,
-                    return_dict=False,
-                )
+            down_block_res_samples, mid_block_res_sample = self.controlnet(
+                control_model_input,
+                t,
+                encoder_hidden_states=controlnet_prompt_embeds,
+                controlnet_cond=conditioning_frames,
+                conditioning_scale=cond_scale,
+                guess_mode=guess_mode,
+                return_dict=False,
+            )
 
-                # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
-                    added_cond_kwargs=added_cond_kwargs,
-                    down_block_additional_residuals=down_block_res_samples,
-                    mid_block_additional_residual=mid_block_res_sample,
-                ).sample
+            # predict the noise residual
+            noise_pred = self.unet(
+                latent_model_input,
+                t,
+                encoder_hidden_states=prompt_embeds,
+                cross_attention_kwargs=self.cross_attention_kwargs,
+                added_cond_kwargs=added_cond_kwargs,
+                down_block_additional_residuals=down_block_res_samples,
+                mid_block_additional_residual=mid_block_res_sample,
+                set_adapters=self.set_adapters,
+                camera_motions=camera_motions,
+            ).sample
 
-                # perform guidance
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            # perform guidance
+            if self.do_classifier_free_guidance:
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            # compute the previous noisy sample x_t -> x_t-1
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                latents = callback_outputs.pop("latents", latents)
+                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+            # call the callback, if provided
+            if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if callback is not None and i % callback_steps == 0:
+                    callback(i, t, latents)
 
         # 9. Post processing
         if output_type == "latent":
             video = latents
         else:
             video_tensor = self.decode_latents(latents)
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+            video = self.tensor2vid(video_tensor, output_type=output_type)
 
         # 10. Offload all models
         self.maybe_free_model_hooks()

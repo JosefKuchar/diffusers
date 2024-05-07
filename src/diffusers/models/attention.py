@@ -272,7 +272,7 @@ class BasicTransformerBlock(nn.Module):
             self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
         # let chunk size default to None
-        self._chunk_size = None
+        self._chunk_size = 1
         self._chunk_dim = 0
 
     def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
@@ -466,8 +466,8 @@ class TemporalBasicTransformerBlock(nn.Module):
         self.ff = FeedForward(time_mix_inner_dim, activation_fn="geglu")
 
         # let chunk size default to None
-        self._chunk_size = None
-        self._chunk_dim = None
+        self._chunk_size = 1
+        self._chunk_dim = 0
 
     def set_chunk_feed_forward(self, chunk_size: Optional[int], **kwargs):
         # Sets chunk feed-forward

@@ -47,7 +47,6 @@ from .unet_3d_condition import UNet3DConditionOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
 class MotionModules(nn.Module):
     def __init__(
         self,
@@ -117,7 +116,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
 
         if conv_in_channels:
             # input
-            self.conv_in = nn.Conv2d(conv_in_channels, block_out_channels[0], kernel_size=3, padding=1)
+            self.conv_in = nn.Conv2d(
+                conv_in_channels, block_out_channels[0], kernel_size=3, padding=1
+            )
         else:
             self.conv_in = None
 
@@ -235,7 +236,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
             )
 
-        if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
+        if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(
+            down_block_types
+        ):
             raise ValueError(
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
@@ -245,7 +248,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
-            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+            in_channels,
+            block_out_channels[0],
+            kernel_size=conv_in_kernel,
+            padding=conv_in_padding,
         )
 
         # time
@@ -254,7 +260,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep_input_dim = block_out_channels[0]
 
         self.time_embedding = TimestepEmbedding(
-            timestep_input_dim, time_embed_dim, act_fn=act_fn, cond_proj_dim=time_cond_proj_dim
+            timestep_input_dim,
+            time_embed_dim,
+            act_fn=act_fn,
+            cond_proj_dim=time_cond_proj_dim,
         )
 
         if encoder_hid_dim_type is None:
@@ -338,7 +347,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
-            input_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]
+            input_channel = reversed_block_out_channels[
+                min(i + 1, len(block_out_channels) - 1)
+            ]
 
             # add upsample block for all BUT final layer
             if not is_final_block:
@@ -372,7 +383,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # out
         if norm_num_groups is not None:
             self.conv_norm_out = nn.GroupNorm(
-                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
+                num_channels=block_out_channels[0],
+                num_groups=norm_num_groups,
+                eps=norm_eps,
             )
             self.conv_act = nn.SiLU()
         else:
@@ -381,7 +394,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         conv_out_padding = (conv_out_kernel - 1) // 2
         self.conv_out = nn.Conv2d(
-            block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
+            block_out_channels[0],
+            out_channels,
+            kernel_size=conv_out_kernel,
+            padding=conv_out_padding,
         )
 
     @classmethod
@@ -415,9 +431,15 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         config["up_block_types"] = up_blocks
 
         if has_motion_adapter:
-            config["motion_num_attention_heads"] = motion_adapter.config["motion_num_attention_heads"]
-            config["motion_max_seq_length"] = motion_adapter.config["motion_max_seq_length"]
-            config["use_motion_mid_block"] = motion_adapter.config["use_motion_mid_block"]
+            config["motion_num_attention_heads"] = motion_adapter.config[
+                "motion_num_attention_heads"
+            ]
+            config["motion_max_seq_length"] = motion_adapter.config[
+                "motion_max_seq_length"
+            ]
+            config["use_motion_mid_block"] = motion_adapter.config[
+                "use_motion_mid_block"
+            ]
 
             # For PIA UNets we need to set the number input channels to 9
             if motion_adapter.config["conv_in_channels"]:
@@ -439,7 +461,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             updated_conv_in_weight = torch.cat(
                 [unet.conv_in.weight, motion_adapter.conv_in.weight[:, 4:, :, :]], dim=1
             )
-            model.conv_in.load_state_dict({"weight": updated_conv_in_weight, "bias": unet.conv_in.bias})
+            model.conv_in.load_state_dict(
+                {"weight": updated_conv_in_weight, "bias": unet.conv_in.bias}
+            )
         else:
             model.conv_in.load_state_dict(unet.conv_in.state_dict())
 
@@ -447,21 +471,33 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         model.time_embedding.load_state_dict(unet.time_embedding.state_dict())
 
         for i, down_block in enumerate(unet.down_blocks):
-            model.down_blocks[i].resnets.load_state_dict(down_block.resnets.state_dict())
+            model.down_blocks[i].resnets.load_state_dict(
+                down_block.resnets.state_dict()
+            )
             if hasattr(model.down_blocks[i], "attentions"):
-                model.down_blocks[i].attentions.load_state_dict(down_block.attentions.state_dict())
+                model.down_blocks[i].attentions.load_state_dict(
+                    down_block.attentions.state_dict()
+                )
             if model.down_blocks[i].downsamplers:
-                model.down_blocks[i].downsamplers.load_state_dict(down_block.downsamplers.state_dict())
+                model.down_blocks[i].downsamplers.load_state_dict(
+                    down_block.downsamplers.state_dict()
+                )
 
         for i, up_block in enumerate(unet.up_blocks):
             model.up_blocks[i].resnets.load_state_dict(up_block.resnets.state_dict())
             if hasattr(model.up_blocks[i], "attentions"):
-                model.up_blocks[i].attentions.load_state_dict(up_block.attentions.state_dict())
+                model.up_blocks[i].attentions.load_state_dict(
+                    up_block.attentions.state_dict()
+                )
             if model.up_blocks[i].upsamplers:
-                model.up_blocks[i].upsamplers.load_state_dict(up_block.upsamplers.state_dict())
+                model.up_blocks[i].upsamplers.load_state_dict(
+                    up_block.upsamplers.state_dict()
+                )
 
         model.mid_block.resnets.load_state_dict(unet.mid_block.resnets.state_dict())
-        model.mid_block.attentions.load_state_dict(unet.mid_block.attentions.state_dict())
+        model.mid_block.attentions.load_state_dict(
+            unet.mid_block.attentions.state_dict()
+        )
 
         if unet.conv_norm_out is not None:
             model.conv_norm_out.load_state_dict(unet.conv_norm_out.state_dict())
@@ -503,13 +539,19 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     def load_motion_modules(self, motion_adapter: Optional[MotionAdapter]) -> None:
         for i, down_block in enumerate(motion_adapter.down_blocks):
-            self.down_blocks[i].motion_modules.load_state_dict(down_block.motion_modules.state_dict())
+            self.down_blocks[i].motion_modules.load_state_dict(
+                down_block.motion_modules.state_dict()
+            )
         for i, up_block in enumerate(motion_adapter.up_blocks):
-            self.up_blocks[i].motion_modules.load_state_dict(up_block.motion_modules.state_dict())
+            self.up_blocks[i].motion_modules.load_state_dict(
+                up_block.motion_modules.state_dict()
+            )
 
         # to support older motion modules that don't have a mid_block
         if hasattr(self.mid_block, "motion_modules"):
-            self.mid_block.motion_modules.load_state_dict(motion_adapter.mid_block.motion_modules.state_dict())
+            self.mid_block.motion_modules.load_state_dict(
+                motion_adapter.mid_block.motion_modules.state_dict()
+            )
 
     def save_motion_modules(
         self,
@@ -557,9 +599,15 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(
+            name: str,
+            module: torch.nn.Module,
+            processors: Dict[str, AttentionProcessor],
+        ):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor(
+                    return_deprecated_lora=True
+                )
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -572,7 +620,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(
+        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]
+    ):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -607,7 +657,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             fn_recursive_attn_processor(name, module, processor)
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(
+        self, chunk_size: Optional[int] = None, dim: int = 0
+    ) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -626,7 +678,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # By default chunk size is 1
         chunk_size = chunk_size or 1
 
-        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
+        def fn_recursive_feed_forward(
+            module: torch.nn.Module, chunk_size: int, dim: int
+        ):
             if hasattr(module, "set_chunk_feed_forward"):
                 module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
 
@@ -638,7 +692,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
     def disable_forward_chunking(self) -> None:
-        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
+        def fn_recursive_feed_forward(
+            module: torch.nn.Module, chunk_size: int, dim: int
+        ):
             if hasattr(module, "set_chunk_feed_forward"):
                 module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
 
@@ -653,9 +709,15 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+        if all(
+            proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS
+            for proc in self.attn_processors.values()
+        ):
             processor = AttnAddedKVProcessor()
-        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+        elif all(
+            proc.__class__ in CROSS_ATTENTION_PROCESSORS
+            for proc in self.attn_processors.values()
+        ):
             processor = AttnProcessor()
         else:
             raise ValueError(
@@ -665,7 +727,15 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.set_attn_processor(processor)
 
     def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
-        if isinstance(module, (CrossAttnDownBlockMotion, DownBlockMotion, CrossAttnUpBlockMotion, UpBlockMotion)):
+        if isinstance(
+            module,
+            (
+                CrossAttnDownBlockMotion,
+                DownBlockMotion,
+                CrossAttnUpBlockMotion,
+                UpBlockMotion,
+            ),
+        ):
             module.gradient_checkpointing = value
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
@@ -699,7 +769,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         freeu_keys = {"s1", "s2", "b1", "b2"}
         for i, upsample_block in enumerate(self.up_blocks):
             for k in freeu_keys:
-                if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
+                if (
+                    hasattr(upsample_block, k)
+                    or getattr(upsample_block, k, None) is not None
+                ):
                     setattr(upsample_block, k, None)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
@@ -718,7 +791,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         for _, attn_processor in self.attn_processors.items():
             if "Added" in str(attn_processor.__class__.__name__):
-                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+                raise ValueError(
+                    "`fuse_qkv_projections()` is not supported for models having added KV projections."
+                )
 
         self.original_attn_processors = self.attn_processors
 
@@ -751,6 +826,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
+        set_adapters=None,
+        camera_motions=None,
         return_dict: bool = True,
     ) -> Union[UNet3DConditionOutput, Tuple[torch.Tensor]]:
         r"""
@@ -797,7 +874,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         upsample_size = None
 
         if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
-            logger.info("Forward upsample size to force interpolation output size.")
+            # logger.info("Forward upsample size to force interpolation output size.")
             forward_upsample_size = True
 
         # prepare attention_mask
@@ -832,26 +909,36 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         emb = self.time_embedding(t_emb, timestep_cond)
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
-        if self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
+        if (
+            self.encoder_hid_proj is not None
+            and self.config.encoder_hid_dim_type == "ip_image_proj"
+        ):
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             image_embeds = self.encoder_hid_proj(image_embeds)
-            image_embeds = [image_embed.repeat_interleave(repeats=num_frames, dim=0) for image_embed in image_embeds]
+            image_embeds = [
+                image_embed.repeat_interleave(repeats=num_frames, dim=0)
+                for image_embed in image_embeds
+            ]
             encoder_hidden_states = (encoder_hidden_states, image_embeds)
 
         # 2. pre-process
-        sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
+        sample = sample.permute(0, 2, 1, 3, 4).reshape(
+            (sample.shape[0] * num_frames, -1) + sample.shape[3:]
+        )
         sample = self.conv_in(sample)
 
         # 3. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
-            if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
+            if (
+                hasattr(downsample_block, "has_cross_attention")
+                and downsample_block.has_cross_attention
+            ):
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -859,9 +946,17 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     attention_mask=attention_mask,
                     num_frames=num_frames,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    set_adapters=set_adapters,
+                    camera_motions=camera_motions,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, num_frames=num_frames)
+                sample, res_samples = downsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    num_frames=num_frames,
+                    set_adapters=set_adapters,
+                    camera_motions=camera_motions,
+                )
 
             down_block_res_samples += res_samples
 
@@ -871,7 +966,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             for down_block_res_sample, down_block_additional_residual in zip(
                 down_block_res_samples, down_block_additional_residuals
             ):
-                down_block_res_sample = down_block_res_sample + down_block_additional_residual
+                down_block_res_sample = (
+                    down_block_res_sample + down_block_additional_residual
+                )
                 new_down_block_res_samples += (down_block_res_sample,)
 
             down_block_res_samples = new_down_block_res_samples
@@ -887,6 +984,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     attention_mask=attention_mask,
                     num_frames=num_frames,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    set_adapters=set_adapters,
+                    camera_motions=camera_motions,
                 )
             else:
                 sample = self.mid_block(
@@ -895,6 +994,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    set_adapters=set_adapters,
+                    camera_motions=camera_motions,
                 )
 
         if mid_block_additional_residual is not None:
@@ -905,14 +1006,19 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             is_final_block = i == len(self.up_blocks) - 1
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
-            down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+            down_block_res_samples = down_block_res_samples[
+                : -len(upsample_block.resnets)
+            ]
 
             # if we have not reached the final block and need to forward the
             # upsample size, we do it here
             if not is_final_block and forward_upsample_size:
                 upsample_size = down_block_res_samples[-1].shape[2:]
 
-            if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
+            if (
+                hasattr(upsample_block, "has_cross_attention")
+                and upsample_block.has_cross_attention
+            ):
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
@@ -922,6 +1028,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     attention_mask=attention_mask,
                     num_frames=num_frames,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    set_adapters=set_adapters,
+                    camera_motions=camera_motions,
                 )
             else:
                 sample = upsample_block(
@@ -930,6 +1038,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     res_hidden_states_tuple=res_samples,
                     upsample_size=upsample_size,
                     num_frames=num_frames,
+                    set_adapters=set_adapters,
+                    camera_motions=camera_motions,
                 )
 
         # 6. post-process
@@ -940,7 +1050,11 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         sample = self.conv_out(sample)
 
         # reshape to (batch, channel, framerate, width, height)
-        sample = sample[None, :].reshape((-1, num_frames) + sample.shape[1:]).permute(0, 2, 1, 3, 4)
+        sample = (
+            sample[None, :]
+            .reshape((-1, num_frames) + sample.shape[1:])
+            .permute(0, 2, 1, 3, 4)
+        )
 
         if not return_dict:
             return (sample,)
